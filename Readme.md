@@ -229,21 +229,3 @@ python patient_producer.py
 
 ---
 
-## 👨‍💻 Author
-
-**Vikas Balasubramaniam**
-Real-Time Data & Machine Learning Enthusiast
-
----
-
-## ⭐ If you like this project
-
-Give it a ⭐ and use it for:
-
-* Resume projects
-* Mini / major projects
-* Real-time systems learning
-
----
-
-✅ *This README is production-ready and resume-friendly.*
