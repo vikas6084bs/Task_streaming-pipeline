@@ -1,79 +1,260 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Patient Health Dashboard</title>
+    <meta charset="UTF-8">
+    <title>Patient Alert Monitoring Dashboard</title>
 
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-
+    <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: "Segoe UI", sans-serif;
+            background: #f3f4f6;
+        }
+
+        header {
+            background: linear-gradient(90deg, #1e3a8a, #2563eb);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .card h2 {
+            margin: 5px 0;
+            color: #1f2937;
+        }
+
+        .card p {
+            font-size: 26px;
+            font-weight: bold;
+        }
+
+        .critical {
+            border-left: 6px solid red;
+            background: #fee2e2;
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            background: white;
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        th {
+            background: #2563eb;
+            color: white;
+            padding: 12px;
+        }
+
+        td {
+            padding: 10px;
+            text-align: center;
+        }
+
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        tr.critical-row {
+            background: #fecaca;
+            color: #7f1d1d;
+            font-weight: bold;
+        }
+
+        footer {
+            text-align: center;
+            margin: 15px;
+            color: #6b7280;
+        }
+    </style>
 </head>
 
-<body class="bg-light">
+<body>
 
-<div class="container mt-4">
-    <h2 class="text-center text-danger">
-        🚑 Real-Time Patient Health Alerts
-    </h2>
+<header>
+    <h1>🏥 Real-Time Patient Alert Dashboard</h1>
+    <p>Kafka • Spark Streaming • Flask • Live Analytics</p>
+</header>
 
-    <table class="table table-bordered table-striped mt-4">
-        <thead class="table-dark">
+<div class="container">
+
+    <!-- SUMMARY CARDS -->
+    <div class="cards">
+        <div class="card">
+            <h2>Total Alerts</h2>
+            <p id="totalAlerts">0</p>
+        </div>
+        <div class="card critical">
+            <h2>Critical Alerts</h2>
+            <p id="criticalAlerts">0</p>
+        </div>
+        <div class="card">
+            <h2>Avg Heart Rate</h2>
+            <p id="avgHR">--</p>
+        </div>
+        <div class="card">
+            <h2>Avg Oxygen</h2>
+            <p id="avgO2">--</p>
+        </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="charts">
+        <canvas id="heartRateChart"></canvas>
+        <canvas id="alertTypeChart"></canvas>
+    </div>
+
+    <!-- ALERT TABLE -->
+    <table>
+        <thead>
             <tr>
                 <th>Patient ID</th>
                 <th>Heart Rate</th>
+                <th>Blood Pressure</th>
                 <th>Oxygen</th>
                 <th>Temperature</th>
+                <th>Alert Reason</th>
+                <th>Status</th>
             </tr>
         </thead>
         <tbody id="alertTable"></tbody>
     </table>
 
-    <canvas id="heartChart" height="120"></canvas>
 </div>
 
+<footer>
+    Live updates every 2 seconds | Critical alerts highlighted
+</footer>
+
 <script>
-let chart;
-const ctx = document.getElementById("heartChart").getContext("2d");
+    let hrChart, alertChart;
 
-async function fetchAlerts() {
-    const res = await fetch("/alerts");
-    const data = await res.json();
+    function initCharts() {
+        hrChart = new Chart(document.getElementById("heartRateChart"), {
+            type: "line",
+            data: {
+                labels: [],
+                datasets: [{
+                    label: "Heart Rate",
+                    data: [],
+                    borderWidth: 2,
+                    tension: 0.3
+                }]
+            }
+        });
 
-    const table = document.getElementById("alertTable");
-    table.innerHTML = "";
+        alertChart = new Chart(document.getElementById("alertTypeChart"), {
+            type: "bar",
+            data: {
+                labels: ["Heart Rate", "Oxygen", "Temperature", "BP"],
+                datasets: [{
+                    label: "Critical Count",
+                    data: [0, 0, 0, 0]
+                }]
+            }
+        });
+    }
 
-    const labels = [];
-    const values = [];
+    async function loadAlerts() {
+        const response = await fetch("/alerts");
+        const alerts = await response.json();
 
-    data.slice(-10).forEach(a => {
-        table.innerHTML += `
-            <tr class="table-danger">
-                <td>${a.patient_id}</td>
-                <td>${a.heart_rate}</td>
-                <td>${a.oxygen}</td>
-                <td>${a.temperature}</td>
-            </tr>
-        `;
-        labels.push(a.patient_id);
-        values.push(a.heart_rate);
-    });
+        let critical = 0, hrSum = 0, o2Sum = 0;
+        let reasons = { hr:0, o2:0, temp:0, bp:0 };
 
-    if (chart) chart.destroy();
+        const table = document.getElementById("alertTable");
+        table.innerHTML = "";
 
-    chart = new Chart(ctx, {
-        type: "line",
-        data: {
-            labels: labels,
-            datasets: [{
-                label: "Heart Rate",
-                data: values,
-                borderWidth: 2
-            }]
+        alerts.slice(-20).reverse().forEach(a => {
+            let status = "NORMAL";
+            let rowClass = "";
+            let reason = "—";
+
+            if (a.heart_rate > 120) { status="CRITICAL"; reason="High Heart Rate"; reasons.hr++; }
+            if (a.oxygen < 90) { status="CRITICAL"; reason="Low Oxygen"; reasons.o2++; }
+            if (a.temperature > 102) { status="CRITICAL"; reason="High Temperature"; reasons.temp++; }
+            if (a.bp_systolic > 170) { status="CRITICAL"; reason="High Blood Pressure"; reasons.bp++; }
+
+            if (status === "CRITICAL") {
+                rowClass = "critical-row";
+                critical++;
+            }
+
+            hrSum += a.heart_rate;
+            o2Sum += a.oxygen;
+
+            table.innerHTML += `
+                <tr class="${rowClass}">
+                    <td>${a.patient_id}</td>
+                    <td>${a.heart_rate}</td>
+                    <td>${a.bp_systolic}/${a.bp_diastolic}</td>
+                    <td>${a.oxygen}</td>
+                    <td>${a.temperature}</td>
+                    <td>${reason}</td>
+                    <td>${status}</td>
+                </tr>`;
+        });
+
+        document.getElementById("totalAlerts").innerText = alerts.length;
+        document.getElementById("criticalAlerts").innerText = critical;
+        document.getElementById("avgHR").innerText = alerts.length ? Math.round(hrSum/alerts.length) : "--";
+        document.getElementById("avgO2").innerText = alerts.length ? Math.round(o2Sum/alerts.length) : "--";
+
+        // Update charts
+        hrChart.data.labels.push("");
+        hrChart.data.datasets[0].data.push(alerts.at(-1)?.heart_rate || 0);
+        if (hrChart.data.labels.length > 20) {
+            hrChart.data.labels.shift();
+            hrChart.data.datasets[0].data.shift();
         }
-    });
-}
+        hrChart.update();
 
-setInterval(fetchAlerts, 3000);
+        alertChart.data.datasets[0].data = [
+            reasons.hr, reasons.o2, reasons.temp, reasons.bp
+        ];
+        alertChart.update();
+    }
+
+    initCharts();
+    setInterval(loadAlerts, 2000);
 </script>
 
 </body>
