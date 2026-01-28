@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Patient Health Dashboard</title>
+
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-4">
+    <h2 class="text-center text-danger">
+        🚑 Real-Time Patient Health Alerts
+    </h2>
+
+    <table class="table table-bordered table-striped mt-4">
+        <thead class="table-dark">
+            <tr>
+                <th>Patient ID</th>
+                <th>Heart Rate</th>
+                <th>Oxygen</th>
+                <th>Temperature</th>
+            </tr>
+        </thead>
+        <tbody id="alertTable"></tbody>
+    </table>
+
+    <canvas id="heartChart" height="120"></canvas>
+</div>
+
+<script>
+let chart;
+const ctx = document.getElementById("heartChart").getContext("2d");
+
+async function fetchAlerts() {
+    const res = await fetch("/alerts");
+    const data = await res.json();
+
+    const table = document.getElementById("alertTable");
+    table.innerHTML = "";
+
+    const labels = [];
+    const values = [];
+
+    data.slice(-10).forEach(a => {
+        table.innerHTML += `
+            <tr class="table-danger">
+                <td>${a.patient_id}</td>
+                <td>${a.heart_rate}</td>
+                <td>${a.oxygen}</td>
+                <td>${a.temperature}</td>
+            </tr>
+        `;
+        labels.push(a.patient_id);
+        values.push(a.heart_rate);
+    });
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Heart Rate",
+                data: values,
+                borderWidth: 2
+            }]
+        }
+    });
+}
+
+setInterval(fetchAlerts, 3000);
+</script>
+
+</body>
+</html>
